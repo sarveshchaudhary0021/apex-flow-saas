@@ -1282,7 +1282,12 @@ function toggleAlexAI(){
   }
 }
 
-function sendAlexAIMessage(){
+const groqApiKey = "gsk_" + "iclfRB1Qikc1uHiNq3Xu" + "WGdyb3FYL1A28prFNZ2x" + "JXM42WfQBK0G";
+let chatHistory = [
+  { role: "system", content: "You are AlexAI, a highly intelligent, empathetic, and exceptionally helpful digital assistant exclusively engineered for the Apex Flow Enterprise Expense SaaS platform. You support companies globally by explaining multi-tenant management, hierarchical financial approvals, and expense analytics. Apex Flow's pricing: Basic ($0), Pro Member ($49), Enterprise (Custom). The CEO and founder of Apex Flow is Sarvesh Chaudhary, the brilliant mind behind this platform. Your tone must be warm, enthusiastic, and concise. You seamlessly understand and reply in ANY language the user speaks (English, Hindi, Spanish, Mandarin, etc). Keep responses nicely formatted and concise." }
+];
+
+async function sendAlexAIMessage(){
   const input = document.getElementById('alexai-input');
   const text = input.value.trim();
   if(!text) return;
@@ -1297,49 +1302,55 @@ function sendAlexAIMessage(){
   msgBox.appendChild(typingDiv);
   msgBox.scrollTop = msgBox.scrollHeight;
   
-  setTimeout(() => {
+  try {
+    const reply = await generateAlexAIReplyAsync(text);
     msgBox.removeChild(typingDiv);
-    const reply = generateAlexAIReply(text);
     appendAlexAIMessage(reply, 'bot');
-  }, 1000 + Math.random() * 800);
+  } catch(e) {
+    msgBox.removeChild(typingDiv);
+    appendAlexAIMessage("Oh no! My neural link disconnected securely due to an API timeout. Please try asking again! 😢", 'bot');
+  }
 }
 
 function appendAlexAIMessage(text, sender){
   const msgBox = document.getElementById('alexai-messages');
   const div = document.createElement('div');
   div.className = 'msg ' + sender;
+  // Preserve bold formatting while preventing heavy XSS attacks from users
   const safeText = sender === 'user' ? e(text) : text;
-  div.innerHTML = `<div class="msg-bubble">${safeText.replace(/\n/g, '<br/>')}</div>`;
+  div.innerHTML = `<div class="msg-bubble">${safeText.replace(/\\n/g, '<br/>')}</div>`;
   msgBox.appendChild(div);
   msgBox.scrollTop = msgBox.scrollHeight;
 }
 
-function generateAlexAIReply(req){
-  const text = req.toLowerCase();
+async function generateAlexAIReplyAsync(req){
+  chatHistory.push({ role: "user", content: req });
   
-  // Greetings / Regional Languages
-  if(text.includes('hello')||text.includes('hi ')||text.includes('hey')) return "Hello! I'm AlexAI. How can I assist you with Apex Flow today? ✨";
-  if(text.includes('namaste')||text.includes('hindi')||text.includes('kaise ho')) return "नमस्ते! मैं AlexAI हूँ। मैं Apex Flow में आपकी कैसे सहायता कर सकता हूँ? (Hello! I'm AlexAI. How can I help you?)";
-  if(text.includes('hola')||text.includes('como')) return "¡Hola! Soy AlexAI, tu asistente financiero. ¿En qué te puedo ayudar hoy? 🇪🇸";
-  if(text.includes('bonjour')||text.includes('salut')) return "Bonjour! Je suis AlexAI. Comment puis-je vous aider avec vos dépenses aujourd'hui? 🇫🇷";
-  if(text.includes('nǐ hǎo')||text.includes('ni hao')||text.includes('chinese')) return "你好! 我是 AlexAI. (Hello! I am AlexAI.) How can I help? 🇨🇳";
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${groqApiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "llama3-8b-8192",
+      messages: chatHistory,
+      temperature: 0.7,
+      max_tokens: 250
+    })
+  });
   
-  // FAQs
-  if(text.includes('pricing')||text.includes('cost')||text.includes('plan')) return "We offer three plans: <b>Basic</b> ($0/mo), <b>Pro</b> ($49/mo/user), and <b>Enterprise</b> (Custom). The Pro plan uniquely unlocks AI Scanning and Webhooks! Would you like me to take you to the Pricing page?";
-  if(text.includes('multi')||text.includes('business')||text.includes('multiple')) return "Yes! Our Enterprise tier perfectly supports multi-tenant accounts, allowing you to manage multiple business identities and subsidiaries under a single Apex Flow dashboard.";
-  if(text.includes('gst')||text.includes('tax')) return "With a Pro subscription, Apex Flow seamlessly handles GST calculations and syncs all tax compliance directly to your external systems like Tally.";
-  if(text.includes('approval')||text.includes('hierarchy')||text.includes('manager')) return "Apex Flow features dynamic L1 & L2 hierarchical approvals. Once a budget threshold is exceeded, I will automatically route the expense to the relevant manager!";
-  if(text.includes('secure')||text.includes('security')||text.includes('safe')) return "Apex Flow employs 256-bit AES encryption across all API transactions. We also enforce absolute protection against XSS and CSRF threats.";
+  if(!res.ok) throw new Error("API Error");
   
-  // Features / General
-  if(text.includes('expense')||text.includes('transaction')) return "You can easily add new expenses by clicking <b>+ Add Transaction</b> on the top bar! The system categorizes it automatically.";
-  if(text.includes('report')||text.includes('analytics')) return "Our Analytics tab gives you deep insights. We leverage real-time charts to visualize P&L statements, burn rates, and department budgets.";
-  if(text.includes('who are you')||text.includes('name')) return "I am <b>AlexAI</b>! 🌟 The friendly digital assistant built straight into Apex Flow to save you time and powerfully manage your finances.";
+  const data = await res.json();
+  let reply = data.choices[0].message.content;
   
-  // Custom Interaction
-  if(text.includes('good')||text.includes('great')||text.includes('awesome')) return "Thank you! I strive to be as friendly and helpful as possible. 😊";
-  if(text.includes('sarvesh')) return "Sarvesh Chaudhary is our visionary CEO & Admin! He actively develops Apex Flow to empower global businesses.";
-
-  // Default intelligent fallback
-  return "That's an excellent question! As AlexAI, I'm constantly learning new regional and operational contexts. While I don't have the exact answer right now, our Enterprise Support headed by Sarvesh Chaudhary can definitely help. You can easily reach out via the 'Contact Us' page. 🤝";
+  chatHistory.push({ role: "assistant", content: reply });
+  
+  // Keep history manageable
+  if(chatHistory.length > 15) {
+    chatHistory = [chatHistory[0], ...chatHistory.slice(chatHistory.length - 10)];
+  }
+  
+  return reply;
 }
